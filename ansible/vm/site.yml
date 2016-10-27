@@ -1,0 +1,78 @@
+---
+- hosts: localhost
+  user: root
+  vars_files:
+    - conf.yml
+  tasks:
+    - name: リソースグループを作成
+      azure_rm_resourcegroup:
+        name: TestingAnsible
+        location: japaneast
+
+    - name: 仮想ネットワークを作成
+      azure_rm_virtualnetwork:
+        resource_group: TestingAnsible
+        name: vm01
+        address_prefixes_cidr:
+          - "10.0.0.0/16"
+
+    - name: サブネットを作成
+      azure_rm_subnet:
+        resource_group: TestingAnsible
+        virtual_network_name: vm01
+        name: subnet01
+        address_prefix_cidr: "10.0.0.0/24"
+
+    # - name: Windows仮想マシンを作成
+    #   azure_rm_virtualmachine:
+    #     name: ansiblewinvm01
+    #     resource_group: TestingAnsible
+    #     vm_size: Standard_D1
+    #     public_ip_allocation_method: Dynamic
+    #     admin_username: MyAdminName
+    #     admin_password: MyAdminP@ssw0rd
+    #     open_ports:
+    #       - 3389
+    #       - 5986
+    #     os_type: Windows
+    #     image:
+    #       publisher: MicrosoftWindowsServer
+    #       offer: WindowsServer
+    #       sku: 2016-Datacenter
+    #       version: latest
+    #     tags:
+    #       ansible-target: "true"
+    #   register: azure_win_vm_status
+
+    # - name: 作成した仮想マシンのパブリックIPを表示
+    #   debug:
+    #     msg: "Public IP Address: {{ azure_win_vm_status.ansible_facts.azure_vm.properties.networkProfile.networkInterfaces.0.properties.ipConfigurations.0.properties.publicIPAddress.properties.ipAddress }}"
+
+    - name: Linux仮想マシンを作成
+      azure_rm_virtualmachine:
+        name: ansiblecentosvm01
+        resource_group: TestingAnsible
+        vm_size: Standard_D1
+        public_ip_allocation_method: Dynamic
+        admin_username: MyAdminName
+        ssh_password_enabled: No
+        ssh_public_keys:
+        - path: "/home/MyAdminName/.ssh/authorized_keys"
+          key_data: "{{ lookup('file', './tmp/id_rsa.pub') }}"
+        open_ports:
+          - 22
+        os_type: Linux
+        image:
+          publisher: OpenLogic
+          offer: CentOS
+          sku: 7.2n
+          version: latest
+        tags:
+          ansible-target: "true"
+      register: azure_centos_vm_status
+
+    - name: 作成した仮想マシンのパブリックIPを表示
+      debug:
+        msg: "Public IP Address: {{ azure_centos_vm_status.ansible_facts.azure_vm.properties.networkProfile.networkInterfaces.0.properties.ipConfigurations.0.properties.publicIPAddress.properties.ipAddress }}"
+
+

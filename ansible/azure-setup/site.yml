@@ -1,0 +1,92 @@
+---
+- hosts: localhost
+  user: root
+  vars_files:
+    - conf.yml
+  tasks:
+    - name: パスワードファイル確認
+      stat:
+        path: password.txt
+      register: result
+    - name: パスワード生成
+      shell: "openssl rand -base64 30 >> password.txt"
+      register: result
+      when: result.stat.exists == false
+    - name: パスワード読み込み
+      shell: "cat password.txt"
+      register: result
+      changed_when: no
+      always_run: yes
+    - name: パスワードの定数化
+      set_fact:
+        password: "{{ result.stdout }}"
+
+    # - name: output message.
+    #   debug: msg="{{ result.stat.exists }}"
+
+    - name: サブスクリプションIDの取得確認
+      shell: "azure account show"
+      changed_when: no
+      always_run: yes
+
+    - name: サブスクリプションIDの取得
+      shell: "azure account show | grep -E '^.\\[90mdata[^:]*:\\s*ID.*' | awk ' { print $4 }'"
+      register: result
+      changed_when: no
+      always_run: yes
+    - name: サブスクリプションIDの定数化
+      set_fact:
+        subscription_id: "{{ result.stdout }}"
+
+    - name: Tenant IDの取得
+      shell: "azure account show | grep -E '^.\\[90mdata[^:]*:\\s*Tenant\\sID.*' | awk ' { print $5 }'"
+      register: result
+      changed_when: no
+      always_run: yes
+    - name: Tenant IDの定数化
+      set_fact:
+        tenant_id: "{{ result.stdout }}"
+
+    - name: ActiveDirectoryアプリケーションの確認
+      shell: "azure ad app show --identifierUri={{ identifier_uri }} | grep 'No matching application was found'"
+      register: exit
+      changed_when: no
+      always_run: yes
+      failed_when: exit.rc not in [0, 1]
+    - name: ActiveDirectoryアプリケーションの登録
+      shell: "azure ad app create --name '{{ app_name }}' --home-page '{{ identifier_uri }}' --identifier-uris '{{ identifier_uri }}' --password '{{ password }}'"
+      when: exit.rc == 0
+
+    - name: APP IDの取得
+      shell: "azure ad app show --identifierUri={{ identifier_uri }} | grep AppId | awk '{ print $3 }'"
+      register: result
+      changed_when: no
+      always_run: yes
+    - name: APP IDの定数化
+      set_fact:
+        app_id: "{{ result.stdout }}"
+
+    - name: サービスプリンシパルへの確認
+      shell: "azure ad sp show --spn {{ identifier_uri }} | grep 'No matching service principal was found'"
+      register: exit
+      changed_when: no
+      always_run: yes
+      failed_when: exit.rc not in [0, 1]
+    - name: サービスプリンシパルの作成
+      shell: "azure ad sp create --applicationId {{ app_id }}"
+      when: exit.rc == 0
+
+    - name: サービスプリンシパルへの権限割り当て確認
+      shell: "azure role assignment list --spn {{ identifier_uri }} | grep 'No role assignments matching the search criteria were found'"
+      register: exit
+      changed_when: no
+      always_run: yes
+      failed_when: exit.rc not in [0, 1]
+    - name: サービスプリンシパルへの権限割り当て
+      shell: "azure role assignment create --spn {{ identifier_uri }}  -o 'Owner' -c /subscriptions/{{ subscription_id }}"
+      when: exit.rc == 0
+
+    - name: Azureの認証情報作成
+      template:
+        src: files/credentials
+        dest: "/home/ubuntu/.azure/credentials"

@@ -1,0 +1,5 @@
+.vagrant
+*.log
+ansible/azure-setup/password.txt
+ansible/**/site.retry
+ansible/vm/tmp
